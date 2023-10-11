@@ -1,8 +1,8 @@
 package my;
 
 import org.apache.kafka.common.serialization.Serdes;
-import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.kstream.Branched;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.Named;
 import org.apache.kafka.streams.processor.WallclockTimestampExtractor;
@@ -50,14 +50,14 @@ public class KafkaStreamsConfig {
                 .peek((key, value) -> LOGGER.info("record [key: {}, value: {}] is being processed through task2 stream", key, value))
                 .filter((key, value) -> value != null)
                 .flatMapValues(value -> Arrays.asList(value.split("\\W+")))
-                .map((key, value) -> KeyValue.pair(value.length(), value))
+                .selectKey((key, value) -> value.length())
                 .peek((key, value) -> LOGGER.info("word [length: {}, value: {}] was extracted", key, value));
 
-        KStream<Integer, String> streamOfShortWords = stream.filter((key, value) -> key < 10, Named.as("words-short"));
-        KStream<Integer, String> streamOfLongWords = stream.filter((key, value) -> key >= 10, Named.as("words-long"));
+        Map<String, KStream<Integer, String>> streamsSplitted = stream.split(Named.as("words-"))
+                .branch((key, value) -> key < 10, Branched.as("short"))
+                .defaultBranch(Branched.as("long"));
 
-        return Map.of("words-short", streamOfShortWords,
-                  "words-long", streamOfLongWords);
+        return streamsSplitted;
     }
 
     @Bean
